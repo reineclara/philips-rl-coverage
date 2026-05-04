@@ -1,0 +1,144 @@
+\section{Experimental Setup}
+\label{sec:experiments}
+
+This section describes the simulated environment, the baselines, the training setup and the evaluation protocol, and reports the empirical results with proper statistical summaries.
+
+
+\subsection{Dataset and simulation environment}
+\label{subsec:dataset}
+
+Direct online access to Philips France's contractual inventory is subject to confidentiality and operational constraints, so we do not conduct training on the production systems. Instead, we build a \emph{simulation environment} whose parameter distributions are chosen to reproduce the qualitative characteristics of a hospital-equipment installed base: coverage levels, contract durations, contractual costs, and equipment risk levels. This environment plays the role of both dataset and interaction simulator, which guarantees full experimental reproducibility and avoids any exposure of sensitive data.
+
+Each episode represents a single piece of medical equipment tracked over a finite horizon of $T = 120$ daily time steps. At reset, the environment randomly draws: a remaining time before current coverage expiration within $[5, 30]$ days, a contract-cost level with three modalities (low, medium, high), and a risk level with three modalities (low, medium, high). The equipment is initially covered.
+
+
+\subsection{Baseline policies}
+\label{subsec:baselines}
+
+We compare the PPO agent with three complementary baselines. The first is a uniformly random policy over the three actions, which sets a lower performance bound. The second is a rule-based heuristic reflecting operational practice, with a nominal threshold of five days. The third is the greedy policy computed by synchronous value iteration on the expected-reward tabular MDP of Section~\ref{subsec:vi-baseline}, denoted \emph{VI (exp.)}: discounted Bellman-optimal in expectation, rolled out with the identical simulator as every other baseline. Welch's two-sided test on per-episode rewards between VI and heuristic returns $t \approx 0.04$, $p \approx 0.97$ ($n{=}100$ shared seeds), which is consistent with the hypothesis that threshold rules saturate the Bellman-optimal frontier in expectation here.
+
+
+\subsection{Architecture and training setup}
+\label{subsec:training}
+
+The policy and value function share a two-layer fully connected encoder of width $64$ with $\tanh$ activations, followed by two linear heads: a softmax head over the three actions and a scalar value head. Observations are normalized online through a running estimate of the mean and variance (using Welford's algorithm), then clipped to the interval $[-5, 5]$ before being fed to the network.
+
+Training uses PPO with Generalized Advantage Estimation (GAE). At each iteration, a full episode is collected under the current policy, the advantage is computed, and the policy-value pair is updated for four passes over mini-batches of size $64$. Advantages are normalized per batch. The objective combines PPO's clipped loss, a squared value loss and an entropy bonus encouraging exploration. Hyperparameters are summarized in Table~\ref{tab:hparams}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lc}
+\toprule
+Hyperparameter & Value \\
+\midrule
+Number of episodes            & $5{,}000$ \\
+Episode horizon               & $120$ days \\
+Learning rate                 & $3 \times 10^{-4}$ \\
+Discount factor               & $0.99$ \\
+GAE parameter                 & $0.95$ \\
+Clip range                    & $0.2$ \\
+Optimization epochs           & $4$ \\
+Mini-batch size               & $64$ \\
+Hidden dimension              & $64$ \\
+Entropy coefficient           & $0.02$ \\
+Value coefficient             & $0.5$ \\
+Observation clipping          & $[-5, 5]$ \\
+\bottomrule
+\end{tabular}
+\caption{Training hyperparameters.}
+\label{tab:hparams}
+\end{table}
+
+
+\subsection{Evaluation protocol}
+\label{subsec:eval-protocol}
+
+Every $100$ training episodes, the current policy is evaluated in deterministic mode (argmax action selection) over $20$ episodes sharing fixed simulation seeds. The best policy in terms of evaluation reward is retained and restored at the end of training.
+
+The \emph{final} comparison with the baseline policies is conducted on a separate and larger pool of $100$ simulation seeds, shared across every policy, so that they face identical contract and failure trajectories. This procedure neutralizes the stochastic variance of the environment and enables a statistically sound comparison between random, heuristic, VI and learned controllers. We report, for every metric and every policy, the sample mean, the sample standard deviation and a two-sided $95\%$ confidence interval on the mean computed with Student's $t$-distribution ($\mathrm{df}=99$).
+
+
+\subsection{Results}
+\label{subsec:results}
+
+The performance on $100$ shared evaluation seeds is reported in Table~\ref{tab:results}.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcccc}
+\toprule
+Metric & Random & Heuristic & PPO & VI (exp.) \\
+\midrule
+Cumulative reward (mean $\pm$ SD) &
+    $-241.44 \pm 92.66$ &
+    $58.06 \pm 3.93$ &
+    $54.56 \pm 3.93$ &
+    $58.08 \pm 3.96$ \\
+$95\%$ CI &
+    $[-259.60, -223.28]$ &
+    $[57.29, 58.84]$ &
+    $[53.79, 55.33]$ &
+    $[57.31, 58.86]$ \\
+\bottomrule
+\end{tabular}
+\caption{Performance comparison over $100$ evaluation episodes with shared seeds. Each cell reports mean $\pm$ SD on the first line and the $95\%$ confidence interval on the second (Student's $t$, $\mathrm{df}=99$).}
+\label{tab:results}
+\end{table}
+
+\paragraph{Main finding.}
+The heuristic attains a mean reward of $58.06$ and PPO attains $54.56$; the gap is far outside the respective $95\%$ confidence intervals. Welch's test on per-episode rewards yields $t = -6.31$, $p < 0.0001$ ($\mathrm{df} \approx 198$). The tabular Bellman policy (VI) attains $58.08 \pm 3.96$, statistically indistinguishable from the heuristic (Welch $t \approx 0.04$, $p \approx 0.97$), so the latter should be understood as \emph{co-optimal} with the exact finite-horizon tabulation, not as an arbitrary engineering baseline. PPO's gap is therefore a gap to the Bellman-optimal frontier of this toy MDP, driven by function approximation and finite training rather than by a weak reference policy.
+
+\paragraph{A counter-intuitive but well-explained random baseline.}
+The random policy obtains a strongly negative reward despite recording zero uncovered steps and zero uncovered failures in every evaluated episode. This apparently counter-intuitive result stems from the structure of the action space: by drawing uniformly among the three decisions, two of which---renew and extend---preserve or restore coverage, the random agent mechanically keeps contracts active but accumulates prohibitive contractual costs. The absence of a strategy thus manifests as expensive over-coverage rather than under-coverage.
+
+\paragraph{PPO learns a competent but sub-optimal policy.}
+PPO reaches a clearly positive mean reward and demonstrates that a standard policy-gradient procedure is able to learn, from interactions with the simulator alone, perfect coverage scheduling on these seeds while still paying renewal costs imperfectly relative to the threshold certificate. It is not competitive with the heuristic in mean reward, despite the elongated $5{,}000$-episode budget. The residual mean gap is discussed in Section~\ref{sec:discussion}; in essence, VI shows the MDP's parsimonious frontier is encodeable by a one-parameter rule whereas PPO must recover it indirectly from noisy gradient feedback.
+
+
+\subsection{Sensitivity analysis: heuristic threshold}
+\label{subsec:sensitivity}
+
+A natural concern is that the strong performance of the heuristic might come from a specific, favourable choice of its renewal threshold. Table~\ref{tab:sensitivity} reports the mean reward of the heuristic for five values of the threshold, evaluated on the same $100$ shared seeds.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Threshold (days) & $3$ & $5$ & $7$ & $10$ & $15$ \\
+\midrule
+Mean reward $\pm$ SD &
+    $58.06 \pm 3.93$ &
+    $58.06 \pm 3.93$ &
+    $49.98 \pm 4.00$ &
+    $49.74 \pm 4.23$ &
+    $49.14 \pm 4.62$ \\
+$95\%$ CI &
+    $[57.29, 58.84]$ &
+    $[57.29, 58.84]$ &
+    $[49.20, 50.76]$ &
+    $[48.91, 50.57]$ &
+    $[48.24, 50.04]$ \\
+\bottomrule
+\end{tabular}
+\caption{Heuristic renewal-threshold sensitivity on the same $100$ shared seeds as Table~\ref{tab:results}.}
+\label{tab:sensitivity}
+\end{table}
+
+The heuristic's peak is flat: thresholds of $3$ and $5$ produce exactly the same mean reward ($58.06$). The heuristic is robust across its operating range: the largest observed loss is only $8.9$ reward units between the peak and threshold $15$. At $54.56 \pm 3.93$, PPO improves on the loosest heuristic instantiation while remaining materially below VI and the rule's peak regime.
+
+
+\subsection{Interpretability via Bellman tabulation}
+\label{subsec:interpretability}
+
+To localise where the PPO greedy policy departs from the Bellman certificate, we tabulate its action choice on every cell of the augmented finite MDP: state $(\mathrm{covered}, \mathrm{days\_to\_exp}, \mathrm{cost\_level}, \mathrm{risk\_level}, \mathrm{step\_index})$, with $|\mathcal{S}_\text{tab}| = 65{,}880$ reachable cells.
+
+The headline numbers are an action-agreement of $95.2\%$ with the VI optimum and $95.6\%$ with the threshold heuristic. Stratifying by coverage status further isolates the failure mode: on covered cells ($64{,}800$ states), PPO agrees with VI on $95.5\%$ and with the heuristic on $95.9\%$; nearly all disagreement comes from PPO extending instead of doing nothing. On uncovered cells ($1{,}080$ states), agreement drops to $77.8\%$ with both references.
+
+
+\subsection{Scope of the empirical claims}
+\label{subsec:scope}
+
+The results in this section are obtained in a deliberately simplified simulation environment whose distributions are controlled by a handful of parameters. They therefore do not directly entail the performance achievable in production, where additional factors---portfolio heterogeneity, global budget constraints, partial observability, non-stationary dynamics---that are absent from the present framework come into play. Within this scope, the results motivate a sharper claim than ``PPO loses against a heuristic'': VI shows the heuristic coincides---up to Monte Carlo noise---with an exact Bellman policy, whereas PPO remains about $3.5$ reward units behind on average ($p \ll 10^{-4}$).

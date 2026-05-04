@@ -1,0 +1,82 @@
+\section{Discussion}
+\label{sec:discussion}
+
+The results reported in Section~\ref{subsec:results} place reinforcement learning significantly above the random policy but also significantly below both the heuristic rule and the tabular VI benchmark, with Welch tests against PPO at $p < 10^{-4}$ whereas heuristic and VI rewards are statistically inseparable ($p \approx 0.97$). This section interrogates how to read these contrasts and sketches responsible extensions.
+
+
+\subsection{Positioning of the contribution}
+\label{subsec:positioning}
+
+Before discussing the empirical gap in detail, it is useful to restate what this paper does and does not claim. We do not contribute a new RL algorithm: every component of our pipeline (PPO, GAE, observation normalization, advantage normalization, entropy bonus) is taken off-the-shelf from prior work~\cite{schulman2017ppo, schulman2016gae, andrychowicz2021matters}. The contribution is applicative and methodological in a narrower sense: we isolate a business decision-making problem whose RL formulation has not, to our knowledge, been published; we build the smallest non-trivial simulator capable of carrying that decision; we derive a tabular Bellman reference via synchronous value iteration; and we compare PPO against uniform random rolls, heuristic sweeps, and the VI roll-out with shared seeds, confidence intervals and Welch tests.
+
+
+\subsection{Why PPO outperforms the random policy}
+\label{subsec:why-ppo-beats-random}
+
+The gap between PPO and the random policy does not merely reflect a difference in immediate expected reward; it stems from the fact that the agent learns to \emph{structure} its decisions around the state. Three mechanisms drive this behavior.
+
+First, the agent identifies a \emph{semantics} of coverage status: it learns that renewing is of little value---or even detrimental---while coverage is still largely valid, and that it becomes critical as expiration approaches. This semantics is not provided upfront: it is extracted exclusively from the reward signal, through observed trajectories.
+
+Second, the agent learns a \emph{temporal credit assignment}: the GAE estimator propagates the penalties of expiration and of uncovered failure back to the decisions that made them possible several steps earlier. The random policy, which does not adapt to the current state, cannot benefit from this information and accumulates penalties mechanically.
+
+Third, the agent \emph{conditions} its decisions on the full state, which lets it implicitly weigh the cost of a renewal against the contract-cost level and the risk level. The random policy treats all situations interchangeably and is necessarily penalized by this lack of specificity.
+
+
+\subsection{Why the heuristic policy can still win}
+\label{subsec:why-heuristic-wins}
+
+The gap between PPO and the threshold heuristic is best read through the lens of \emph{co-optimal planning}. Value iteration on the augmented tabular MDP yields roll-out statistics that Welch's test cannot distinguish from the heuristic, so the ``business rule'' is not an arbitrary straw man: it tracks the Bellman reference up to Monte Carlo noise. Neural PPO therefore trails an analytical certificate, not merely tribal knowledge.
+
+The sensitivity analysis in Section~\ref{subsec:sensitivity} adds engineering colour: the heuristic sits on a flat optimum for low thresholds, stays robust until the chosen deadline drifts excessively late, and attains peaks that PPO has not matched despite outperforming its loosest instantiations. Production teams may value that robustness, while researchers should treat it as evidence that parsimonious policies exhaust the toy model's headroom until couplings and partial observability enter the story.
+
+
+\subsection{Limitations of the current setup}
+\label{subsec:limitations}
+
+Several limitations bound the scope of the reported conclusions.
+
+\paragraph{Simulator dependence.}
+Training and evaluation are conducted exclusively in a simulated environment. Distributions over contract durations, cost levels and risk, as well as failure probabilities, are defined by fixed parameters that have not been matched against Philips France's real installed base. Any bias between these distributions and reality will mechanically propagate to the learned policy.
+
+\paragraph{Single-equipment framing.}
+The MDP models a single piece of equipment at a time, without interactions between contracts. This choice simplifies analysis and reproducibility but elides budget couplings, volume constraints and portfolio effects that lie at the heart of the original operational problem.
+
+\paragraph{Sensitivity to reward shaping.}
+The reward function blends manually chosen coefficients. An exhaustive sensitivity programme over coupled coefficients remains a natural extension.
+
+\paragraph{Limited interpretability.}
+The learned policy is represented by a neural network whose decisions are not natively explainable. As a first step, Section~\ref{subsec:interpretability} tabulates PPO's greedy action on every reachable cell of the augmented finite MDP and reports the per-state agreement with the VI optimum and with the threshold heuristic. This diagnostic does not replace a fully distillable surrogate but it pinpoints where the policy departs from the Bellman certificate.
+
+\paragraph{Governance and human oversight.}
+High-stakes renewals that affect patient-ready equipment should remain under human-in-the-loop approval, with immutable audit logs and periodic reviews of simulator parameters and reward weights to surface institutional or financial bias before automation scales.
+
+\paragraph{No hard operational constraints.}
+Contractual budget, exclusivities, renewal eligibility windows and contractual obligations do not appear explicitly in the MDP. In a production deployment, such constraints must be \emph{guaranteed}, not merely encouraged by the reward.
+
+
+\subsection{Paths for improvement}
+\label{subsec:improvements}
+
+The limitations above suggest several concrete directions.
+
+\paragraph{Extension to the full installed base.}
+Moving from the single-equipment framing to a heterogeneous portfolio exposes budget couplings and risk asymmetries that na\"ively blow up tabular planning. Factorised critics, constrained optimisation and amortised RL then address regimes where threshold heuristics and brute-force VI lose traction together.
+
+\paragraph{Offline learning from historical data.}
+Once available, the operational traces of Philips France may serve as the basis for offline RL, avoiding any interaction with the production system. Algorithms such as Conservative Q-Learning or Implicit Q-Learning allow exploiting such data while controlling extrapolation risk.
+
+\paragraph{Constrained learning.}
+Budgetary and contractual constraints may be enforced explicitly, either via action masking (prohibition at the softmax level of infeasible actions) or through constrained-RL algorithms such as Constrained PPO and Lagrangian methods.
+
+\paragraph{Robustness and uncertainty quantification.}
+Training over an ensemble of parametrically diverse simulators, the use of Bayesian policies, and joint perturbation grids would strengthen out-of-distribution guarantees.
+
+\paragraph{Interpretability.}
+Beyond the state-by-state agreement diagnostic, several additional levers may reduce policy opacity: distillation of the learned policy into a decision tree or a set of rules, analysis of input-feature importance, or hybrid formulations combining an interpretable rule with a learned residual.
+
+\paragraph{Comparison with stochastic optimization.}
+Finally, confronting PPO with classical optimization methods---multi-stage stochastic programming, rolling-horizon integer programs---would complement the study with a comparison against a global policy obtained directly from an explicit model of the problem.
+
+\bigskip
+\noindent
+These directions converge toward a more demanding experimental framework in which the simplifying assumptions of the present work are lifted one by one. They form the core of the research program outlined in Section~\ref{sec:conclusion}.
