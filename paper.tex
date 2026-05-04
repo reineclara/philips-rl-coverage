@@ -1,0 +1,53 @@
+\documentclass{article}
+
+% Three options for neurips_2024.sty:
+%   - default (no option):  ANONYMIZED for double-blind OpenReview submission
+%   - [preprint]:           authors visible, "Preprint. Under review." header
+%                            → use for arXiv / HAL cross-post
+%   - [final]:              authors visible, no header (camera-ready copy)
+\usepackage{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath, amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+\graphicspath{{figures/}}
+
+\title{Reinforcement Learning for Hospital Equipment\\
+       Contract Coverage Optimization}
+
+\author{%
+  Reine Clara Mapessi Memiaghe \\
+  AIvancity School for Technology, Business \& Society \\
+  \texttt{mapessireine@gmail.com}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Hospital equipment management at medical-technology companies such as Philips relies on a complex portfolio of maintenance contracts, manufacturer warranties and warranty extensions. Current decision-support tools remain largely descriptive and provide limited anticipation of contractual risks. We cast the coverage-optimization problem as a finite-horizon Markov decision process (MDP) on a single piece of equipment and train a from-scratch Proximal Policy Optimization (PPO) agent in a reproducible simulation environment. Our contribution is not algorithmic: PPO, GAE and observation normalization are taken off-the-shelf. We contribute a clean MDP formulation for a decision-making problem that, to our knowledge, has not been cast as RL in the published literature, together with a statistically rigorous evaluation protocol that includes synchronous value iteration as a tabular Bellman reference. On 100 shared seeds, PPO attains $54.56 \pm 3.93$ (95\% CI $[53.79, 55.33]$), far above random ($-241.44 \pm 92.66$), but below a threshold heuristic ($58.06 \pm 3.93$) and synchronous value iteration ($58.08 \pm 3.96$), which are statistically indistinguishable. The heuristic remains robust across its threshold sweep, and a state-by-state tabulation of the saved PPO policy shows 95.2\% action agreement with VI over 65{,}880 reachable states.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/method}
+\input{sections/experiments}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+{\small
+\bibliographystyle{plainnat}
+\bibliography{references}
+}
+
+\end{document}
